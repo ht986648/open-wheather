@@ -13,7 +13,7 @@ import { metersToKilometers } from "@/utils/metersToKilometers";
 import axios from "axios";
 import { format, fromUnixTime, parseISO } from "date-fns";
 import Image from "next/image";
-import { useQuery } from "react-query";
+import { useQuery } from "@tanstack/react-query";
 import { loadingCityAtom, placeAtom } from "./atom";
 import { useAtom } from "jotai";
 import { useEffect } from "react";
@@ -80,9 +80,9 @@ export default function Home() {
   const [place, setPlace] = useAtom(placeAtom);
   const [loadingCity] = useAtom(loadingCityAtom);
 
-  const { isLoading, error, data, refetch } = useQuery<WeatherData>(
-    "repoData",
-    async () => {
+  const { isLoading, error, data, refetch } = useQuery({
+    queryKey: ['weather', place],
+    queryFn: async () => {
       try {
         if (!process.env.NEXT_PUBLIC_WEATHER_KEY) {
           throw new Error("Weather API key is not configured");
@@ -91,30 +91,27 @@ export default function Home() {
         const apiUrl = `https://api.openweathermap.org/data/2.5/forecast?q=${place}&appid=${process.env.NEXT_PUBLIC_WEATHER_KEY}&cnt=56`;
         console.log("API URL (without key):", apiUrl.replace(process.env.NEXT_PUBLIC_WEATHER_KEY, "HIDDEN_KEY"));
         
-        const { data } = await axios.get(apiUrl);
+        const { data } = await axios.get<WeatherData>(apiUrl);
         return data;
       } catch (err: any) {
         if (err.response) {
-          // The request was made and the server responded with a status code
-          // that falls out of the range of 2xx
           throw new Error(`Weather API Error: ${err.response.data.message || err.response.statusText}`);
         } else if (err.request) {
-          // The request was made but no response was received
           throw new Error("No response received from Weather API");
         } else {
-          // Something happened in setting up the request that triggered an Error
           throw new Error(`Error: ${err.message}`);
         }
       }
     },
-    {
-      retry: 1,
-      refetchOnWindowFocus: false,
-    }
-  );
+    enabled: !!place,
+    retry: 1,
+    refetchOnWindowFocus: false,
+  });
 
   useEffect(() => {
-    refetch();
+    if (place) {
+      refetch();
+    }
   }, [place, refetch]);
 
   const firstData = data?.list[0];
@@ -126,14 +123,14 @@ export default function Home() {
   const uniqueDates = [
     ...new Set(
       data?.list.map(
-        (entry) => new Date(entry.dt * 1000).toISOString().split("T")[0]
+        (entry: WeatherDetail) => new Date(entry.dt * 1000).toISOString().split("T")[0]
       )
     )
   ];
 
   // Filtering data to get the first entry after 6 AM for each unique date
   const firstDataForEachDate = uniqueDates.map((date) => {
-    return data?.list.find((entry) => {
+    return data?.list.find((entry: WeatherDetail) => {
       const entryDate = new Date(entry.dt * 1000).toISOString().split("T")[0];
       const entryTime = new Date(entry.dt * 1000).getHours();
       return entryDate === date && entryTime >= 6;
@@ -207,7 +204,7 @@ export default function Home() {
                   </div>
                   {/* time  and weather  icon */}
                   <div className="flex gap-10 sm:gap-16 overflow-x-auto w-full justify-between pr-3">
-                    {data?.list.map((d, i) => (
+                    {data?.list.map((d: WeatherDetail, i: number) => (
                       <div
                         key={i}
                         className="flex flex-col justify-between gap-2 items-center text-xs font-semibold "
